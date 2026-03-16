@@ -1,0 +1,23 @@
+[
+    {
+        "url": "https://boards.greenhouse.io/company/jobs/123456",
+        "company": "ExampleCorp",
+        "position": "Senior ML Engineer",
+        "notes": "Greenhouse ATS, straightforward form",
+        "credentials_key": null
+    },
+    {
+        "url": "https://company.lever.co/apply/abc-def",
+        "company": "AnotherCo",
+        "position": "ML Engineer",
+        "notes": "Lever ATS, may need login",
+        "credentials_key": "lever"
+    },
+    {
+        "url": "https://company.wd5.myworkdayjobs.com/careers/job/NYC/ML-Engineer_R12345/apply",
+        "company": "BigCorp",
+        "position": "ML Engineer II",
+        "notes": "Workday - multi-page, use max_steps=50",
+        "credentials_key": "workday"
+    }
+]

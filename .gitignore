@@ -1,0 +1,24 @@
+# Secrets
+.env
+config/credentials.json
+config/profile.json
+config/jobs.json
+
+# Browser data (cookies, sessions, cache — large, per-machine)
+browser_profiles/
+
+# Output artifacts (regenerated each run)
+output/screenshots/
+output/cover_letters/
+output/logs/
+output/results.json
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp

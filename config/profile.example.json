@@ -1,0 +1,55 @@
+{
+    "first_name": "YOUR_FIRST_NAME",
+    "last_name": "YOUR_LAST_NAME",
+    "email": "you@email.com",
+    "phone": "+1-555-123-4567",
+    "location": "Brooklyn, NY",
+    "linkedin_url": "https://linkedin.com/in/yourprofile",
+    "github_url": "https://github.com/yourprofile",
+    "portfolio_url": null,
+    "current_title": "ML Engineer",
+    "years_experience": 5,
+    "summary": "ML Engineer with experience in LLM/RAG systems, credit risk modeling, and agentic AI. Built production systems at Hebbia and American Express.",
+    "education": [
+        {
+            "school": "Your University",
+            "degree": "BS Computer Science",
+            "year": 2020
+        }
+    ],
+    "experience": [
+        {
+            "company": "Hebbia",
+            "title": "ML Engineer",
+            "dates": "2022-2024",
+            "bullets": [
+                "Built LLM-based financial document analysis pipelines",
+                "Designed RAG systems for structured data extraction"
+            ]
+        },
+        {
+            "company": "American Express",
+            "title": "Data Scientist",
+            "dates": "2020-2022",
+            "bullets": [
+                "Developed credit default prediction models",
+                "Built feature engineering pipelines processing millions of transactions"
+            ]
+        }
+    ],
+    "skills": [
+        "Python", "PyTorch", "TensorFlow", "LLMs", "RAG",
+        "LangChain", "Reinforcement Learning", "NLP",
+        "SQL", "PostgreSQL", "Docker", "AWS", "GCP",
+        "Scikit-learn", "Pandas", "NumPy"
+    ],
+    "work_authorization": "Yes - US Citizen",
+    "requires_sponsorship": "No",
+    "salary_expectation": "150000-180000",
+    "start_date": "2 weeks notice",
+    "gender": "Decline to self-identify",
+    "ethnicity": "Decline to self-identify",
+    "veteran_status": "Decline to self-identify",
+    "disability_status": "Decline to self-identify",
+    "resume_path": "/absolute/path/to/your/resume.pdf"
+}
