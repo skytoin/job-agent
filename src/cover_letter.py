@@ -1,12 +1,12 @@
-"""Phase 2: Generate tailored cover letters via Anthropic API with prompt caching."""
+"""Phase 2: Generate tailored cover letters via LLM API.
 
-import asyncio
+Supports Anthropic (with prompt caching) and OpenAI.
+"""
+
 from pathlib import Path
 
-import anthropic
-
+from src.llm import is_openai_model
 from src.profile import JobDescription, Profile
-
 
 TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "cover_letter.txt"
 
@@ -15,47 +15,69 @@ def _load_system_prompt() -> str:
     return TEMPLATE_PATH.read_text()
 
 
-async def generate_cover_letter(
-    profile: Profile,
-    job: JobDescription,
-    model_name: str = "claude-sonnet-4-20250514",
+async def _generate_anthropic(
+    system_block: str,
+    user_message: str,
+    model_name: str,
 ) -> str:
-    """Generate a cover letter tailored to the job description.
+    """Generate via Anthropic API with prompt caching."""
+    import anthropic
 
-    Uses prompt caching: the system prompt + profile data are cached after the
-    first call, reducing input cost to ~10% for subsequent jobs.
-    """
     client = anthropic.AsyncAnthropic()
-
-    system_prompt = _load_system_prompt()
-    profile_compact = profile.to_compact_str()
-
-    # Cache the system prompt + profile (identical across all jobs)
-    cached_block = f"{system_prompt}\n\nAPPLICANT PROFILE:\n{profile_compact}"
-
     response = await client.messages.create(
         model=model_name,
         max_tokens=500,
         system=[
             {
                 "type": "text",
-                "text": cached_block,
+                "text": system_block,
                 "cache_control": {"type": "ephemeral"},
             }
         ],
+        messages=[{"role": "user", "content": user_message}],
+    )
+    return response.content[0].text
+
+
+async def _generate_openai(
+    system_block: str,
+    user_message: str,
+    model_name: str,
+) -> str:
+    """Generate via OpenAI API."""
+    import openai
+
+    client = openai.AsyncOpenAI()
+    response = await client.chat.completions.create(
+        model=model_name,
+        max_completion_tokens=500,
         messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Write a cover letter for the position of {job.position} "
-                    f"at {job.company}.\n\n"
-                    f"JOB DESCRIPTION:\n{job.description[:2000]}"
-                ),
-            }
+            {"role": "system", "content": system_block},
+            {"role": "user", "content": user_message},
         ],
     )
+    return response.choices[0].message.content or ""
 
-    return response.content[0].text
+
+async def generate_cover_letter(
+    profile: Profile,
+    job: JobDescription,
+    model_name: str = "claude-sonnet-4-20250514",
+) -> str:
+    """Generate a cover letter tailored to the job description."""
+    system_prompt = _load_system_prompt()
+    profile_compact = profile.to_compact_str()
+    system_block = f"{system_prompt}\n\nAPPLICANT PROFILE:\n{profile_compact}"
+
+    user_message = (
+        f"Write a cover letter for the position of {job.position} "
+        f"at {job.company}.\n\n"
+        f"JOB DESCRIPTION:\n{job.description[:2000]}"
+    )
+
+    if is_openai_model(model_name):
+        return await _generate_openai(system_block, user_message, model_name)
+    return await _generate_anthropic(system_block, user_message, model_name)
 
 
 async def generate_all_cover_letters(

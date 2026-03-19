@@ -1,8 +1,6 @@
 """Tests for profile data models."""
 
-import pytest
-
-from src.profile import ApplicationResult, Education, Experience, JobTarget, Profile
+from src.profile import ApplicationResult, JobTarget, Profile
 
 
 def _sample_profile(**overrides) -> Profile:

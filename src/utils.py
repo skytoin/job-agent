@@ -35,7 +35,9 @@ def retry_async(max_retries: int = 1, delay: float = 2.0):
                 except Exception as e:
                     last_error = e
                     if attempt < max_retries:
-                        logger.warning(f"Retry {attempt + 1}/{max_retries} for {func.__name__}: {e}")
+                        logger.warning(
+                            f"Retry {attempt + 1}/{max_retries} for {func.__name__}: {e}"
+                        )
                         await asyncio.sleep(delay)
             raise last_error
 

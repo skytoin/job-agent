@@ -22,12 +22,12 @@ def load_config() -> tuple[Profile, list[JobTarget]]:
 
     if not profile_path.exists():
         console.print("[red]Missing config/profile.json[/]")
-        console.print("Copy config/profile.example.json → config/profile.json and fill in your data")
+        console.print("Copy config/profile.example.json -> config/profile.json and fill in your data")
         sys.exit(1)
 
     if not jobs_path.exists():
         console.print("[red]Missing config/jobs.json[/]")
-        console.print("Copy config/jobs.example.json → config/jobs.json and add your target jobs")
+        console.print("Copy config/jobs.example.json -> config/jobs.json and add your target jobs")
         sys.exit(1)
 
     profile = Profile(**json.loads(profile_path.read_text()))

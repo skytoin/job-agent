@@ -47,19 +47,21 @@ class Profile(BaseModel):
 
     # EEO (optional)
     gender: str = "Decline to self-identify"
+    hispanic_latino: str = "No"
     ethnicity: str = "Decline to self-identify"
     veteran_status: str = "Decline to self-identify"
-    disability_status: str = "Decline to self-identify"
+    disability_status: str = "I do not have a disability"
 
     # File
     resume_path: str
 
+    # Default login credentials key (references config/credentials.json)
+    default_credentials_key: str | None = None
+
     def to_compact_str(self) -> str:
         """Minimal string representation for LLM prompts. Saves tokens."""
         skills_str = ", ".join(self.skills[:15])
-        exp_str = "; ".join(
-            f"{e.company} ({e.title}, {e.dates})" for e in self.experience[:3]
-        )
+        exp_str = "; ".join(f"{e.company} ({e.title}, {e.dates})" for e in self.experience[:3])
         return (
             f"{self.first_name} {self.last_name} | {self.current_title} | "
             f"{self.years_experience}yr exp | {self.location}\n"
@@ -99,5 +101,7 @@ class ApplicationResult(BaseModel):
     position: str = ""
     status: str  # "filled" | "error" | "skipped"
     error: str | None = None
+    failure_category: str | None = None  # "auth" | "form" | "page" | "budget" | None
+    agent_summary: str | None = None  # Agent's own final message — the real story
     screenshot_path: str | None = None
     cover_letter_path: str | None = None
