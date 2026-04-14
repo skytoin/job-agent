@@ -420,7 +420,47 @@ def merge_field_lists(aria_fields: list[dict], js_fields: list[dict]) -> list[di
             continue
         out.append(jf)
 
-    return out
+    return _drop_group_member_duplicates(out)
+
+
+def _drop_group_member_duplicates(fields: list[dict]) -> list[dict]:
+    """Remove JS individual checkbox/radio fields that are members of an
+    ARIA checkbox_group or radio_group already in the list.
+
+    Example: ARIA correctly extracts "How did you hear about us?" as one
+    ``checkbox_group`` with 10 options (BuiltIn, LinkedIn, etc.). The JS
+    extractor also extracts each of those 10 options as a separate
+    ``checkbox`` field. Those individual JS checkboxes are ghost duplicates
+    — they inflate the denominator in the fill-ratio check and can't be
+    filled meaningfully because the ARIA group path already handles them.
+
+    This function keeps the ARIA group and drops the JS individual members.
+    """
+    group_member_labels: set[str] = set()
+    for f in fields:
+        if not f.get("_label_based"):
+            continue
+        if f.get("type") not in ("checkbox_group", "radio_group"):
+            continue
+        for opt in f.get("options") or []:
+            text = opt.get("text", "") if isinstance(opt, dict) else str(opt)
+            if text:
+                group_member_labels.add(_normalize_label_for_dedup(text))
+
+    if not group_member_labels:
+        return fields
+
+    filtered: list[dict] = []
+    for f in fields:
+        if f.get("_label_based"):
+            filtered.append(f)
+            continue
+        if f.get("type") in ("checkbox", "radio_group"):
+            label_key = _normalize_label_for_dedup(f.get("label", ""))
+            if label_key in group_member_labels:
+                continue  # ghost member of an ARIA group we already have
+        filtered.append(f)
+    return filtered
 
 
 async def call_mapping_llm(
@@ -580,11 +620,11 @@ async def fill_fields_js(
         label_based = bool(field_info.get("_label_based"))
 
         log_entry: dict = {
-            "field_id": (field_id or "")[:60],
+            "field_id": (field_id or "")[:200],
             "type": field_type,
             "label_based": label_based,
-            "label": (field_info.get("label") or "")[:60],
-            "value": value[:60],
+            "label": (field_info.get("label") or "")[:120],
+            "value": value[:120],
             "status": "unknown",
         }
 
@@ -1007,15 +1047,71 @@ async def _haiku_fix_failing_fields(
         return {}
 
 
+def _check_required_fields_covered(
+    fields: list[dict],
+    mapping: dict[str, str],
+    filled: list[str],
+) -> tuple[bool, list[str]]:
+    """Check whether every required field in ``fields`` was filled.
+
+    Returns ``(all_covered, missing_labels)``.
+    - ``all_covered`` is True if every field with ``required=True`` appears in
+      ``filled``, OR if the form has no detectable required fields at all
+      (lazy ATS — fall through to "always submit" behavior).
+    - ``missing_labels`` is the list of required field labels that were NOT
+      filled. Used for logging when we bail.
+    """
+    required_fields = [f for f in fields if f.get("required")]
+    if not required_fields:
+        # No required fields detected — let caller decide (Option C fallback).
+        return True, []
+
+    filled_set = set(filled)
+    missing = [
+        f.get("label", "") or (f.get("id") or f.get("name") or "")
+        for f in required_fields
+        if (f.get("id") or f.get("name")) not in filled_set
+    ]
+    return (len(missing) == 0), missing
+
+
+def _build_prefill_hints(
+    fields: list[dict],
+    template_map: dict[str, str],
+    cache_map: dict[str, str],
+) -> list[tuple[str, str, str]]:
+    """Collect (field_type, label, value) tuples from Layer 0 matches.
+
+    These hints are handed to the browser-use agent if direct_fill escalates,
+    so the agent doesn't waste Sonnet tokens re-deriving answers we already
+    know are correct from the profile.
+    """
+    combined: dict[str, str] = {**template_map, **cache_map}
+    fields_by_id = {(f.get("id") or f.get("name")): f for f in fields}
+
+    hints: list[tuple[str, str, str]] = []
+    for field_id, value in combined.items():
+        f = fields_by_id.get(field_id)
+        if not f:
+            continue
+        label = (f.get("label") or "").strip()
+        field_type = f.get("type", "text")
+        if label and value:
+            hints.append((field_type, label, str(value)))
+    return hints
+
+
 async def direct_fill_application(
     page: Page,
     profile: Profile,
     cover_letter: str,
     model_name: str = "claude-sonnet-4-6",
-) -> tuple[bool, str]:
+) -> tuple[bool, str, list[tuple[str, str, str]]]:
     """Try to fill an application using direct JS + 1 LLM call.
 
-    Returns (success, summary_message).
+    Returns ``(success, summary_message, prefill_hints)``. ``prefill_hints``
+    is a list of ``(field_type, label, value)`` tuples from Layer 0 matches
+    that the browser-use agent can use if direct_fill escalates.
     """
     # Apply button already clicked by caller (_try_direct_fill)
     # Step 1: Try the ATS's own "Autofill from resume" widget first. This is
@@ -1044,7 +1140,7 @@ async def direct_fill_application(
     )
 
     if len(fields) < 2:
-        return False, "Too few fields found — page may not have loaded"
+        return False, "Too few fields found — page may not have loaded", []
 
     # Step 4.5: Layer 0 — pre-fill known questions from templates (zero API cost)
     template_map, unmatched = apply_templates(fields, profile)
@@ -1090,8 +1186,17 @@ async def direct_fill_application(
     mapping.update(cache_map)
     mapping.update(template_map)
 
+    # Compute the prefill hints NOW — we need them on EVERY return path below
+    # (success or failure) so the browser-use fallback can benefit from what
+    # Layer 0 + cache already figured out.
+    prefill_hints = _build_prefill_hints(fields, template_map, cache_map)
+
     if not mapping:
-        return False, "Layer 0 + cache + LLM mapping all returned empty — falling back"
+        return (
+            False,
+            "Layer 0 + cache + LLM mapping all returned empty — falling back",
+            prefill_hints,
+        )
 
     # Step 5.5: Layer 1 — Haiku retry for dropdowns where the LLM value doesn't
     # match any actual option on the field. Small surgical per-dropdown fix.
@@ -1101,9 +1206,17 @@ async def direct_fill_application(
     filled = await fill_fields_js(page, mapping, fields, profile)
     logger.info(f"  Direct fill: filled {len(filled)}/{len(mapping)} fields")
 
-    # If we couldn't fill most fields, bail to browser-use
-    if len(filled) < len(mapping) * 0.5:
-        return False, f"Only filled {len(filled)}/{len(mapping)} fields — too few"
+    # NEW THRESHOLD (replaces the old 50% rule): check whether all REQUIRED
+    # fields were filled. If the form has no detected required fields at all,
+    # fall through to "always try submit" (Option C behavior).
+    required_ok, missing_required = _check_required_fields_covered(fields, mapping, filled)
+    if not required_ok:
+        first_missing = ", ".join(m[:40] for m in missing_required[:5])
+        return (
+            False,
+            f"Missing {len(missing_required)} required fields: {first_missing}",
+            prefill_hints,
+        )
 
     # Step 7: Click submit
     await asyncio.sleep(1)
@@ -1146,12 +1259,16 @@ async def direct_fill_application(
             )
             if success:
                 _persist_cache_learnings()
-                return True, retry_summary
+                return True, retry_summary, prefill_hints
 
-            return False, (
-                f"Submit clicked but {len(error_texts)} validation errors. "
-                f"Retry failed: {retry_summary}. "
-                f"Filled {len(filled)} fields. Screenshot: {screenshot_path}"
+            return (
+                False,
+                (
+                    f"Submit clicked but {len(error_texts)} validation errors. "
+                    f"Retry failed: {retry_summary}. "
+                    f"Filled {len(filled)} fields. Screenshot: {screenshot_path}"
+                ),
+                prefill_hints,
             )
 
         # Check for success indicators
@@ -1166,10 +1283,14 @@ async def direct_fill_application(
         )
         if any(kw in body_lower for kw in success_kws):
             _persist_cache_learnings()
-            return True, f"Submitted via direct fill. Fields filled: {len(filled)}"
+            return True, f"Submitted via direct fill. Fields filled: {len(filled)}", prefill_hints
 
         # Submit clicked, no errors, no clear confirmation — still treat as success
         _persist_cache_learnings()
-        return True, f"Submit clicked, {len(filled)} fields filled. Check confirmation."
+        return (
+            True,
+            f"Submit clicked, {len(filled)} fields filled. Check confirmation.",
+            prefill_hints,
+        )
 
-    return False, f"Could not find submit button. Filled {len(filled)} fields."
+    return False, f"Could not find submit button. Filled {len(filled)} fields.", prefill_hints

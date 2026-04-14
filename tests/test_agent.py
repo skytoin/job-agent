@@ -204,3 +204,173 @@ def test_system_instructions_has_sign_in_first():
 def test_system_instructions_has_use_last_application():
     assert "Use My Last Application" in SYSTEM_INSTRUCTIONS
     assert "send_keys" in SYSTEM_INSTRUCTIONS
+
+
+def test_system_instructions_has_anti_paranoia_loop_prevention():
+    assert "LOOP PREVENTION" in SYSTEM_INSTRUCTIONS
+    assert "DO NOT scroll up and down repeatedly" in SYSTEM_INSTRUCTIONS
+
+
+# ---------------------------------------------------------------------------
+# PRE-VERIFIED FIELDS block in task prompt (Layer 0 handoff)
+# ---------------------------------------------------------------------------
+
+
+def _sample_job():
+    from src.profile import JobTarget
+
+    return JobTarget(url="https://example.com/apply", company="Acme", position="ML Engineer")
+
+
+def test_task_prompt_without_hints_has_no_preverified_block():
+    prompt = build_task_prompt(
+        _sample_job(), _sample_profile(), cover_letter="", prefill_hints=None
+    )
+    assert "PRE-VERIFIED FIELDS" not in prompt
+
+
+def test_task_prompt_with_hints_inserts_preverified_block():
+    hints = [
+        ("text", "Full Legal Name", "Gennadiy Khlopov"),
+        ("button_group", "Authorized to work?", "Yes"),
+        ("button_group", "Require sponsorship?", "No"),
+        ("checkbox_group", "How did you hear?", "LinkedIn"),
+    ]
+    prompt = build_task_prompt(
+        _sample_job(), _sample_profile(), cover_letter="", prefill_hints=hints
+    )
+    assert "PRE-VERIFIED FIELDS" in prompt
+    assert "Full Legal Name" in prompt
+    assert "type 'Gennadiy Khlopov'" in prompt
+    assert "Authorized to work?" in prompt
+    assert "click option 'Yes'" in prompt
+    assert "LinkedIn" in prompt
+
+
+def test_task_prompt_hints_include_action_verbs_per_field_type():
+    hints_text_only = [("text", "First Name", "Gennadiy")]
+    prompt = build_task_prompt(_sample_job(), _sample_profile(), "", prefill_hints=hints_text_only)
+    assert "type 'Gennadiy'" in prompt
+
+    hints_checkbox_only = [("checkbox", "I agree to terms", "Yes")]
+    prompt = build_task_prompt(
+        _sample_job(), _sample_profile(), "", prefill_hints=hints_checkbox_only
+    )
+    assert "click 'Yes'" in prompt
+
+
+def test_task_prompt_empty_hint_list_adds_no_block():
+    prompt = build_task_prompt(_sample_job(), _sample_profile(), "", prefill_hints=[])
+    assert "PRE-VERIFIED FIELDS" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# New helpers: cookie dismissal selectors, scroll loop abort, submit detection
+# ---------------------------------------------------------------------------
+
+
+def test_module_has_scroll_cap_constant():
+    from src.agent import MAX_CONSECUTIVE_SCROLL_STEPS
+
+    assert isinstance(MAX_CONSECUTIVE_SCROLL_STEPS, int)
+    assert 2 <= MAX_CONSECUTIVE_SCROLL_STEPS <= 10
+
+
+def test_cookie_dismiss_selectors_defined():
+    from src.agent import COOKIE_DISMISS_SELECTORS
+
+    assert len(COOKIE_DISMISS_SELECTORS) >= 5
+    joined = " ".join(COOKIE_DISMISS_SELECTORS).lower()
+    assert "accept" in joined
+    assert "cookie" in joined or "[id*='cookie']" in joined
+
+
+def test_form_ready_selector_covers_core_form_controls():
+    from src.agent import FORM_READY_SELECTORS
+
+    # Must match plain inputs, select, textarea, and common ARIA roles
+    assert "input" in FORM_READY_SELECTORS
+    assert "select" in FORM_READY_SELECTORS
+    assert "textarea" in FORM_READY_SELECTORS
+    assert "textbox" in FORM_READY_SELECTORS
+    assert "combobox" in FORM_READY_SELECTORS
+    assert "radio" in FORM_READY_SELECTORS
+    assert "checkbox" in FORM_READY_SELECTORS
+    # Must NOT match submit/button inputs (those aren't form fields)
+    assert "type='hidden'" in FORM_READY_SELECTORS or 'type="hidden"' in FORM_READY_SELECTORS
+
+
+def _fake_agent(steps: list) -> object:
+    """Build a minimal fake Agent object mirroring browser-use's state shape."""
+    from types import SimpleNamespace
+
+    history_obj = SimpleNamespace(history=steps)
+    state = SimpleNamespace(history=history_obj, consecutive_failures=0)
+    return SimpleNamespace(state=state)
+
+
+def test_last_step_action_types_returns_empty_on_missing_history():
+    """Defensive test: helpers must not crash on minimal/malformed state."""
+    from types import SimpleNamespace
+
+    from src.agent import _last_step_action_types
+
+    agent = SimpleNamespace(state=SimpleNamespace(history=None))
+    assert _last_step_action_types(agent) == []
+
+
+def test_last_step_action_types_parses_dict_actions():
+    from types import SimpleNamespace
+
+    from src.agent import _last_step_action_types
+
+    step = SimpleNamespace(
+        model_output=SimpleNamespace(
+            action=[{"scroll": {"down": True, "pages": 1.0}}, {"click": None}]
+        )
+    )
+    types = _last_step_action_types(_fake_agent([step]))
+    # click has value None so it's filtered; scroll has a dict value so it's kept
+    assert "scroll" in types
+    assert "click" not in types
+
+
+def test_last_step_action_types_handles_empty_step_list():
+    from src.agent import _last_step_action_types
+
+    assert _last_step_action_types(_fake_agent([])) == []
+
+
+def test_looks_like_submit_click_returns_false_on_no_results():
+    from types import SimpleNamespace
+
+    from src.agent import _looks_like_submit_click
+
+    step = SimpleNamespace(result=[])
+    assert _looks_like_submit_click(_fake_agent([step])) is False
+
+
+def test_looks_like_submit_click_detects_submit_content():
+    from types import SimpleNamespace
+
+    from src.agent import _looks_like_submit_click
+
+    result_item = SimpleNamespace(
+        extracted_content="Clicked button 'Submit Application'",
+        error=None,
+    )
+    step = SimpleNamespace(result=[result_item])
+    assert _looks_like_submit_click(_fake_agent([step])) is True
+
+
+def test_looks_like_submit_click_ignores_unrelated_clicks():
+    from types import SimpleNamespace
+
+    from src.agent import _looks_like_submit_click
+
+    result_item = SimpleNamespace(
+        extracted_content="Clicked some random button",
+        error=None,
+    )
+    step = SimpleNamespace(result=[result_item])
+    assert _looks_like_submit_click(_fake_agent([step])) is False

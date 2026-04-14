@@ -1,12 +1,21 @@
 """Regression tests for direct_fill helpers.
 
-Covers two specific bugs found on 2026-04-13:
+Covers:
   - Bug #4: CSS ID selectors crashed on UUID-style IDs starting with a digit
   - Bug #5: dedup didn't normalize away required markers, so ARIA "Email"
     and JS "Email *" appeared as two distinct fields
+  - Bug #6: ARIA synthetic IDs didn't match real DOM elements (Option B fix)
+  - Bug #7 (2026-04-14): JS extractor over-counted checkbox_group members
+    as individual fields (ghost filter fix)
+  - New: required-field threshold check, prefill-hint collection
 """
 
-from src.direct_fill import _normalize_label_for_dedup, merge_field_lists
+from src.direct_fill import (
+    _build_prefill_hints,
+    _check_required_fields_covered,
+    _normalize_label_for_dedup,
+    merge_field_lists,
+)
 
 # ---------------------------------------------------------------------------
 # Bug #5: dedup label normalizer
@@ -200,6 +209,62 @@ def test_merge_keeps_js_only_fields_unchanged():
     assert "_label_based" not in merged[0]
 
 
+def test_ghost_filter_drops_js_checkboxes_covered_by_aria_group():
+    """The exact Whatnot bug: ARIA extracts 'How did you hear' as ONE
+    checkbox_group with 10 options. JS also extracts each of the 10
+    checkbox option elements as individual fields. Those 10 JS fields
+    are ghosts — they should be dropped because ARIA's group covers them."""
+    aria_fields = [
+        {
+            "id": "aria_checkboxgroup_how_did_you_hear_1",
+            "label": "How did you hear about us?",
+            "type": "checkbox_group",
+            "options": [
+                {"text": "LinkedIn", "value": "LinkedIn"},
+                {"text": "Glassdoor", "value": "Glassdoor"},
+                {"text": "Referral", "value": "Referral"},
+            ],
+        }
+    ]
+    js_fields = [
+        {"id": "cb_0", "label": "LinkedIn", "type": "checkbox"},
+        {"id": "cb_1", "label": "Glassdoor", "type": "checkbox"},
+        {"id": "cb_2", "label": "Referral", "type": "checkbox"},
+        {"id": "_systemfield_name", "label": "Full Legal Name", "type": "text"},
+    ]
+    merged = merge_field_lists(aria_fields, js_fields)
+
+    types = {f["type"]: 0 for f in merged}
+    for f in merged:
+        types[f["type"]] = types.get(f["type"], 0) + 1
+
+    assert types.get("checkbox_group") == 1
+    assert types.get("checkbox", 0) == 0, f"All 3 JS checkboxes should be dropped: {merged}"
+    assert types.get("text") == 1  # the unique Full Legal Name
+    assert len(merged) == 2
+
+
+def test_ghost_filter_keeps_unrelated_checkboxes():
+    """Standalone consent checkboxes (not part of an ARIA group) must NOT be
+    dropped by the ghost filter."""
+    aria_fields = [
+        {
+            "id": "aria_checkboxgroup_how_did_you_hear_1",
+            "label": "How did you hear about us?",
+            "type": "checkbox_group",
+            "options": [{"text": "LinkedIn", "value": "LinkedIn"}],
+        }
+    ]
+    js_fields = [
+        {"id": "cb_0", "label": "LinkedIn", "type": "checkbox"},  # ghost, drop
+        {"id": "cb_terms", "label": "I agree to the terms", "type": "checkbox"},  # keep
+    ]
+    merged = merge_field_lists(aria_fields, js_fields)
+    labels = [f["label"] for f in merged]
+    assert "I agree to the terms" in labels
+    assert len([f for f in merged if f["type"] == "checkbox"]) == 1
+
+
 def test_merge_realistic_whatnot_form_no_synthetic_ids_for_overlap():
     """End-to-end: simulate the Whatnot form with both extractors active.
 
@@ -244,3 +309,100 @@ def test_merge_realistic_whatnot_form_no_synthetic_ids_for_overlap():
     for aid in aria_ids:
         assert by_id[aid]["_label_based"] is True
         assert by_id[aid]["type"] == "button_group"
+
+
+# ---------------------------------------------------------------------------
+# Required-field check (replaces the 50% threshold)
+# ---------------------------------------------------------------------------
+
+
+def test_required_check_all_filled_returns_ok():
+    fields = [
+        {"id": "a", "label": "Email", "type": "email", "required": True},
+        {"id": "b", "label": "Phone", "type": "tel", "required": True},
+        {"id": "c", "label": "Notes", "type": "textarea", "required": False},
+    ]
+    mapping = {"a": "x@y.com", "b": "555-1234"}
+    filled = ["a", "b"]
+    ok, missing = _check_required_fields_covered(fields, mapping, filled)
+    assert ok is True
+    assert missing == []
+
+
+def test_required_check_missing_required_returns_fail():
+    fields = [
+        {"id": "a", "label": "Email", "type": "email", "required": True},
+        {"id": "b", "label": "Work Authorization", "type": "button_group", "required": True},
+    ]
+    mapping = {"a": "x@y.com", "b": "Yes"}
+    filled = ["a"]  # Work Authorization not filled
+    ok, missing = _check_required_fields_covered(fields, mapping, filled)
+    assert ok is False
+    assert "Work Authorization" in missing
+
+
+def test_required_check_no_required_fields_returns_ok_fallthrough():
+    """Lazy ATS with no *-marked fields — fall through to Option C behavior."""
+    fields = [
+        {"id": "a", "label": "Email", "type": "email", "required": False},
+        {"id": "b", "label": "Phone", "type": "tel"},  # no required key at all
+    ]
+    mapping = {"a": "x@y.com"}
+    filled = ["a"]
+    ok, missing = _check_required_fields_covered(fields, mapping, filled)
+    # No required fields detected → "covered" by default (let caller try submit)
+    assert ok is True
+    assert missing == []
+
+
+def test_required_check_optional_unfilled_still_passes():
+    """Skipping optional fields is allowed."""
+    fields = [
+        {"id": "a", "label": "Email", "type": "email", "required": True},
+        {"id": "b", "label": "Portfolio URL", "type": "url", "required": False},
+    ]
+    mapping = {"a": "x@y.com"}  # No portfolio mapping
+    filled = ["a"]
+    ok, _ = _check_required_fields_covered(fields, mapping, filled)
+    assert ok is True
+
+
+# ---------------------------------------------------------------------------
+# _build_prefill_hints: collects (type, label, value) tuples from Layer 0
+# ---------------------------------------------------------------------------
+
+
+def test_build_prefill_hints_collects_template_and_cache_matches():
+    fields = [
+        {"id": "f1", "label": "Email", "type": "email"},
+        {"id": "f2", "label": "Gender", "type": "select"},
+        {"id": "f3", "label": "Custom Question", "type": "text"},  # not in Layer 0
+    ]
+    template_map = {"f1": "me@example.com"}
+    cache_map = {"f2": "Male"}
+
+    hints = _build_prefill_hints(fields, template_map, cache_map)
+
+    assert len(hints) == 2
+    assert ("email", "Email", "me@example.com") in hints
+    assert ("select", "Gender", "Male") in hints
+
+
+def test_build_prefill_hints_skips_fields_not_in_field_list():
+    fields = [{"id": "f1", "label": "Email", "type": "email"}]
+    template_map = {"f_missing": "orphan value"}  # field_id not in fields
+    hints = _build_prefill_hints(fields, template_map, {})
+    assert hints == []
+
+
+def test_build_prefill_hints_skips_empty_labels():
+    fields = [{"id": "f1", "label": "", "type": "text"}]
+    template_map = {"f1": "value"}
+    hints = _build_prefill_hints(fields, template_map, {})
+    assert hints == []
+
+
+def test_build_prefill_hints_empty_when_no_layer_0_matches():
+    fields = [{"id": "f1", "label": "Email", "type": "email"}]
+    hints = _build_prefill_hints(fields, {}, {})
+    assert hints == []
