@@ -62,7 +62,7 @@ async def _generate_openai(
 async def generate_cover_letter(
     profile: Profile,
     job: JobDescription,
-    model_name: str = "claude-sonnet-4-20250514",
+    model_name: str = "claude-sonnet-4-6",
 ) -> str:
     """Generate a cover letter tailored to the job description."""
     system_prompt = _load_system_prompt()
@@ -84,7 +84,7 @@ async def generate_all_cover_letters(
     jobs: list[tuple[str, JobDescription]],
     profile: Profile,
     output_dir: Path = Path("output/cover_letters"),
-    model_name: str = "claude-sonnet-4-20250514",
+    model_name: str = "claude-sonnet-4-6",
 ) -> dict[str, str]:
     """Generate cover letters for all jobs. Returns {url: cover_letter_text}."""
     output_dir.mkdir(parents=True, exist_ok=True)

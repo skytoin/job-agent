@@ -22,7 +22,9 @@ def load_config() -> tuple[Profile, list[JobTarget]]:
 
     if not profile_path.exists():
         console.print("[red]Missing config/profile.json[/]")
-        console.print("Copy config/profile.example.json -> config/profile.json and fill in your data")
+        console.print(
+            "Copy config/profile.example.json -> config/profile.json and fill in your data"
+        )
         sys.exit(1)
 
     if not jobs_path.exists():
@@ -46,33 +48,75 @@ def main() -> None:
     load_dotenv()
 
     parser = argparse.ArgumentParser(description="Parallel job application agent")
-    parser.add_argument("--dry-run", action="store_true", help="Validate config + generate cover letters only")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Validate config + generate cover letters only"
+    )
     parser.add_argument("--max-parallel", type=int, default=3, help="Max concurrent browser agents")
-    parser.add_argument("--job-index", type=int, default=None, help="Run single job by index (for debugging)")
+    parser.add_argument(
+        "--job-index", type=int, default=None, help="Run single job by index (for debugging)"
+    )
     parser.add_argument("--headless", action="store_true", help="Run browsers in headless mode")
-    parser.add_argument("--model", type=str, default="claude-sonnet-4-20250514", help="Model name")
+    parser.add_argument("--model", type=str, default="claude-sonnet-4-6", help="Model name")
+    parser.add_argument(
+        "--force-agent", action="store_true", help="Skip direct fill, always use browser-use agent"
+    )
+    parser.add_argument(
+        "--skyvern-only",
+        action="store_true",
+        help="Send every job directly to Skyvern (no browser-use). Pure Skyvern cost mode.",
+    )
+    parser.add_argument(
+        "--no-skyvern",
+        action="store_true",
+        help="Disable Skyvern entirely. Pure browser-use mode for Anthropic cost comparison.",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Wipe the Layer 0 learned-answers cache before running.",
+    )
     args = parser.parse_args()
+
+    if args.clear_cache:
+        from src.layer0_cache import Layer0Cache
+
+        cache = Layer0Cache()
+        before = len(cache)
+        cache.clear()
+        console.print(f"[yellow]Cleared Layer 0 cache ({before} entries)[/]")
+
+    if args.skyvern_only and args.no_skyvern:
+        console.print("[red]--skyvern-only and --no-skyvern are mutually exclusive.[/]")
+        sys.exit(1)
+
+    # Default is "off" — Skyvern is dormant after cost evaluation rejected it.
+    # Pass --skyvern-only explicitly if you ever want to try it again on a single job.
+    if args.skyvern_only:
+        skyvern_mode = "only"
+    else:
+        skyvern_mode = "off"
 
     profile, jobs = load_config()
 
     if args.job_index is not None:
         if args.job_index >= len(jobs):
-            console.print(f"[red]Job index {args.job_index} out of range (0-{len(jobs)-1})[/]")
+            console.print(f"[red]Job index {args.job_index} out of range (0-{len(jobs) - 1})[/]")
             sys.exit(1)
         jobs = [jobs[args.job_index]]
 
-    console.print(f"[bold]Job Application Agent[/]")
+    console.print("[bold]Job Application Agent[/]")
     console.print(f"  Jobs: {len(jobs)}")
     console.print(f"  Parallel: {args.max_parallel}")
     console.print(f"  Model: {args.model}")
+    console.print(f"  Mode: {skyvern_mode}")
     console.print(f"  Dry run: {args.dry_run}")
     console.print(f"  Est. cost: ~${len(jobs) * 0.02:.2f}")
     console.print()
 
     if not args.dry_run:
-        confirm = input("Press Enter to start (Ctrl+C to cancel)... ")
+        input("Press Enter to start (Ctrl+C to cancel)... ")
 
-    results = asyncio.run(
+    asyncio.run(
         run_all_applications(
             jobs=jobs,
             profile=profile,
@@ -80,6 +124,8 @@ def main() -> None:
             model_name=args.model,
             headless=args.headless,
             dry_run=args.dry_run,
+            force_agent=args.force_agent,
+            skyvern_mode=skyvern_mode,
         )
     )
 

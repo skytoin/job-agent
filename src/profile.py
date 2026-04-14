@@ -105,3 +105,4 @@ class ApplicationResult(BaseModel):
     agent_summary: str | None = None  # Agent's own final message — the real story
     screenshot_path: str | None = None
     cover_letter_path: str | None = None
+    retried_with: str | None = None  # "skyvern" if the fallback handler was used

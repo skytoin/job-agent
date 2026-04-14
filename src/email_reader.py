@@ -31,21 +31,27 @@ VERIFICATION_SENDERS = [
     "talent",
     "hiring",
     "greenhouse",
+    "greenhouse-mail",
     "seatgeek",
     "workday",
     "oracle",
     "ashby",
 ]
 
-# Regex patterns to extract verification codes (digits only, 4-8 chars)
+# Regex patterns to extract verification codes (digits or alphanumeric)
 CODE_PATTERNS = [
+    # Alphanumeric codes in bold/strong tags (Greenhouse uses this)
+    r"<strong>([A-Za-z0-9]{6,10})</strong>",
+    r"<b>([A-Za-z0-9]{6,10})</b>",
+    # "paste this code" pattern (Greenhouse exact wording)
+    r"(?:paste|enter|use|type)\s+(?:this\s+)?code[^:]*?:\s*([A-Za-z0-9]{6,10})",
+    # Digit-only codes with context keywords
     r"(?:code|pin|otp|verification|verify|confirm)\s*(?:is|:)?\s*[\s:]*(\d{4,8})",
     r"(\d{4,8})\s*(?:is your|as your|verification|code|pin)",
     r"(?:enter|use|type)\s+(?:the\s+)?(?:code\s+)?(\d{4,8})",
-    r"<strong>(\d{4,8})</strong>",
-    r"<b>(\d{4,8})</b>",
-    r"(?:^|\s)(\d{6})(?:\s|$)",  # Standalone 6-digit code (most common)
-    r"(?:^|\s)(\d{8})(?:\s|$)",  # Standalone 8-digit code
+    # Standalone codes
+    r"(?:^|\s)(\d{6})(?:\s|$)",
+    r"(?:^|\s)(\d{8})(?:\s|$)",
 ]
 
 

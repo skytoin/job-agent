@@ -1,0 +1,130 @@
+- list:
+  - listitem:
+    - link "Whatnot":
+      - /url: https://whatnot.com
+      - img "Whatnot"
+  - listitem:
+    - link "Back to Whatnot’s Job Listings":
+      - /url: /whatnot?utm_source=LinkedInJobWrapping
+      - img
+  - listitem
+- heading "Machine Learning Engineer, Content and Navigation" [level=1]
+- heading "Location" [level=2]
+- paragraph: San Francisco, CA; Los Angeles, CA; New York, NY; Seattle, WA
+- heading "Employment Type" [level=2]
+- paragraph: Full time
+- heading "Department" [level=2]
+- paragraph: Engineering
+- heading "Compensation" [level=2]
+- list:
+  - listitem: $245K – $345K • Offers Equity
+- paragraph: The salary or hourly rate range may be inclusive of several levels that would be applicable to the position. Final salary or hourly rate will be based on a number of factors including, level, relevant prior experience, skills, and expertise. This range is only inclusive of base salary or hourly rate, not benefits or equity.
+- tablist:
+  - tab "Overview"
+  - tab "Application" [selected]
+- tabpanel "Application":
+  - button "Choose File"
+  - img
+  - heading "Autofill from resume" [level=3]
+  - paragraph: Upload your resume here to autofill key application fields.
+  - button "Upload file"
+  - heading "Whatnot Application Form" [level=2]
+  - paragraph:
+    - emphasis: "Please note: We encourage all candidates to keep their cameras on during video interviews to help us build a personal connection. If you need an alternative arrangement, please let us know and we'll work with you. New hires participate in an in-person onboarding experience at one of our offices."
+  - paragraph
+  - text: Full Legal Name*
+  - textbox "Full Legal Name*":
+    - /placeholder: Type here...
+  - text: Email*
+  - textbox "Email*":
+    - /placeholder: hello@example.com...
+  - text: Resume*
+  - button "Resume*"
+  - button "Upload File":
+    - img
+    - text: Upload File
+  - paragraph: or drag and drop here
+  - text: Phone Number*
+  - textbox "Phone Number*":
+    - /placeholder: 1-415-555-1234...
+  - text: Preferred First Name*
+  - textbox "Preferred First Name*":
+    - /placeholder: Type here...
+  - text: Preferred Last Name*
+  - textbox "Preferred Last Name*":
+    - /placeholder: Type here...
+  - text: Linkedin Profile or Website*
+  - textbox "Linkedin Profile or Website*":
+    - /placeholder: Type here...
+  - group:
+    - text: How did you hear about this opportunity? (Select all that apply)*
+    - img
+    - checkbox "BuiltIn"
+    - text: BuiltIn
+    - img
+    - checkbox "Career Fair"
+    - text: Career Fair
+    - img
+    - checkbox "Conference or Meetup"
+    - text: Conference or Meetup
+    - img
+    - checkbox "Glassdoor"
+    - text: Glassdoor
+    - img
+    - checkbox "I am a buyer/seller on Whatnot"
+    - text: I am a buyer/seller on Whatnot
+    - img
+    - checkbox "LinkedIn"
+    - text: LinkedIn
+    - img
+    - checkbox "Other"
+    - text: Other
+    - img
+    - checkbox "Someone from Whatnot reached out to me"
+    - text: Someone from Whatnot reached out to me
+    - img
+    - checkbox "Whatnot blog"
+    - text: Whatnot blog
+    - img
+    - checkbox "Whatnot Employee"
+    - text: Whatnot Employee
+  - group:
+    - text: We are a flexible remote-first company, but we do require employees to reside within 50 miles of the hub advertised on the job posting for this role. At the time of hire, will you be located within 50 miles of one of our hubs? If so, please select which location.*
+    - radio "Los Angeles, CA"
+    - text: Los Angeles, CA
+    - radio "New York, NY"
+    - text: New York, NY
+    - radio "San Francisco, CA"
+    - text: San Francisco, CA
+    - radio "Seattle, WA"
+    - text: Seattle, WA
+    - radio "N/A - I am not in one of the hub locations and am unable to relocate"
+    - text: N/A - I am not in one of the hub locations and am unable to relocate
+    - radio "N/A - I am not in one of the hub locations but I AM able to relocate"
+    - text: N/A - I am not in one of the hub locations but I AM able to relocate
+  - text: Please list the city and state/province that you are located in today. *
+  - textbox "Please list the city and state/province that you are located in today. *":
+    - /placeholder: Type here...
+  - text: Are you legally authorized to work in the United States?*
+  - button "Yes"
+  - button "No"
+  - text: Will you now or in the future require visa sponsorship to work in the United States?*
+  - button "Yes"
+  - button "No"
+  - link "Recruiting Privacy Policy":
+    - /url: https://static1.squarespace.com/static/64fa3d149819492c05d5b170/t/68a748269121ca7da35d9174/1755793452298/Whatnot+Candidate+Privacy+Notice.pdf
+  - button "Submit Application":
+    - text: Submit Application
+    - img
+- contentinfo:
+  - link "Learn more about Ashby":
+    - /url: https://www.ashbyhq.com
+    - text: Powered by
+    - img "Ashby"
+  - paragraph:
+    - link "Privacy Policy":
+      - /url: https://www.ashbyhq.com/privacy
+    - link "Security":
+      - /url: https://www.ashbyhq.com/security
+    - link "Vulnerability Disclosure":
+      - /url: https://www.ashbyhq.com/disclosure

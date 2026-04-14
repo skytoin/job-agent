@@ -16,6 +16,7 @@ from src.agent import apply_to_job
 from src.cover_letter import generate_all_cover_letters
 from src.job_parser import scrape_all_jobs
 from src.profile import ApplicationResult, JobTarget, Profile
+from src.skyvern_client import fill_application_via_skyvern
 
 console = Console()
 
@@ -24,11 +25,19 @@ async def run_all_applications(
     jobs: list[JobTarget],
     profile: Profile,
     max_parallel: int = 3,
-    model_name: str = "claude-sonnet-4-20250514",
+    model_name: str = "claude-sonnet-4-6",
     headless: bool = False,
     dry_run: bool = False,
+    force_agent: bool = False,
+    skyvern_mode: str = "hybrid",
 ) -> list[ApplicationResult]:
-    """Execute the full 3-phase pipeline for all jobs."""
+    """Execute the full 3-phase pipeline for all jobs.
+
+    ``skyvern_mode`` controls how Skyvern is used:
+      - ``"hybrid"`` (default): browser-use first, Skyvern on failure
+      - ``"only"``:   send every job directly to Skyvern, no browser-use
+      - ``"off"``:    pure browser-use, Skyvern never called
+    """
 
     if dry_run:
         console.print("\n[green]Dry run: config validated successfully![/]")
@@ -53,25 +62,39 @@ async def run_all_applications(
 
     # Phase 3: Fill forms with bounded parallelism
     console.print(
-        f"\n[bold blue]Phase 3:[/] Filling {len(jobs)} apps (max {max_parallel} parallel)..."
+        f"\n[bold blue]Phase 3:[/] Filling {len(jobs)} apps "
+        f"(max {max_parallel} parallel, mode={skyvern_mode})..."
     )
     semaphore = asyncio.Semaphore(max_parallel)
 
     async def bounded_apply(job: JobTarget, idx: int) -> ApplicationResult:
         async with semaphore:
             console.print(f"  Agent {idx}: {job.company or job.url[:50]}...")
-            max_steps = 75 if job.notes and "workday" in job.notes.lower() else 50
-            result = await apply_to_job(
-                job=job,
-                profile=profile,
-                cover_letter=cover_letters.get(job.url, ""),
-                agent_id=idx,
-                model_name=model_name,
-                max_steps=max_steps,
-                headless=headless,
-            )
+            cover_letter = cover_letters.get(job.url, "")
+
+            if skyvern_mode == "only":
+                result = await fill_application_via_skyvern(job, profile, cover_letter)
+            else:
+                result = await apply_to_job(
+                    job=job,
+                    profile=profile,
+                    cover_letter=cover_letter,
+                    agent_id=idx,
+                    model_name=model_name,
+                    max_steps=100,
+                    headless=headless,
+                    force_agent=force_agent,
+                )
+
+                if skyvern_mode == "hybrid" and result.status != "filled":
+                    console.print(f"  Agent {idx}: browser-use failed, trying Skyvern fallback...")
+                    skyvern_result = await fill_application_via_skyvern(job, profile, cover_letter)
+                    if skyvern_result.status == "filled":
+                        result = skyvern_result
+
             icon = "[green]OK[/]" if result.status == "filled" else "[red]FAIL[/]"
-            console.print(f"  Agent {idx}: {icon} {result.status}")
+            tag = f" [{result.retried_with}]" if result.retried_with else ""
+            console.print(f"  Agent {idx}: {icon} {result.status}{tag}")
             return result
 
     results = await asyncio.gather(
