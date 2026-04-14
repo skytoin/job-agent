@@ -1060,8 +1060,13 @@ def _check_required_fields_covered(
       (lazy ATS — fall through to "always submit" behavior).
     - ``missing_labels`` is the list of required field labels that were NOT
       filled. Used for logging when we bail.
+
+    ``file`` type fields are intentionally EXCLUDED — they are handled by a
+    separate ``upload_resume()`` pass earlier in ``direct_fill_application``
+    and never flow through ``fill_fields_js``, so they will never appear in
+    ``filled`` even when the resume has been successfully uploaded.
     """
-    required_fields = [f for f in fields if f.get("required")]
+    required_fields = [f for f in fields if f.get("required") and f.get("type") != "file"]
     if not required_fields:
         # No required fields detected — let caller decide (Option C fallback).
         return True, []

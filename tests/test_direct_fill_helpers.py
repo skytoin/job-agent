@@ -367,6 +367,38 @@ def test_required_check_optional_unfilled_still_passes():
     assert ok is True
 
 
+def test_required_check_excludes_file_type_fields():
+    """The exact Whatnot regression: Resume is marked required but is uploaded
+    separately by upload_resume() and never appears in `filled`. The check
+    must NOT flag it as missing."""
+    fields = [
+        {"id": "_systemfield_name", "label": "Full Legal Name", "type": "text", "required": True},
+        {"id": "_systemfield_email", "label": "Email", "type": "email", "required": True},
+        {"id": "_systemfield_resume", "label": "Resume", "type": "file", "required": True},
+    ]
+    mapping = {
+        "_systemfield_name": "Gennadiy",
+        "_systemfield_email": "me@example.com",
+        "_systemfield_resume": "UPLOAD_RESUME",  # sentinel, not actually filled
+    }
+    filled = ["_systemfield_name", "_systemfield_email"]  # resume NOT in filled
+
+    ok, missing = _check_required_fields_covered(fields, mapping, filled)
+    assert ok is True, f"File type should be excluded; got missing={missing}"
+    assert missing == []
+
+
+def test_required_check_file_excluded_even_when_explicitly_required():
+    """Multiple file fields should also be excluded."""
+    fields = [
+        {"id": "resume", "label": "Resume", "type": "file", "required": True},
+        {"id": "cover", "label": "Cover letter file", "type": "file", "required": True},
+    ]
+    ok, _ = _check_required_fields_covered(fields, {}, [])
+    # No non-file required fields left → returns True (fall-through behavior)
+    assert ok is True
+
+
 # ---------------------------------------------------------------------------
 # _build_prefill_hints: collects (type, label, value) tuples from Layer 0
 # ---------------------------------------------------------------------------

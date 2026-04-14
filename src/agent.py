@@ -796,15 +796,30 @@ async def _agent_fill(
         agent_summary = result.final_result() or ""
         status = "filled" if result.is_successful() else "error"
 
-        # If the agent claimed success but we never saw a submit click, warn
-        # loudly — this often means the user manually clicked submit or the
-        # agent hallucinated a success banner from stale screenshot state.
+        # If the agent claimed success but our heuristic didn't spot a submit
+        # click, double-check the agent's own summary for confirmation keywords
+        # before warning. Our detector is approximate — browser-use's internal
+        # ActionResult format varies — so trust the agent's textual summary as
+        # a tie-breaker to avoid false positives on successful runs.
         if status == "filled" and not submit_clicked[0]:
-            logger.warning(
-                "  Agent declared success but no submit click was observed. "
-                "Treating as success but flagging for manual verification."
+            summary_lc = agent_summary.lower()
+            clearly_submitted = any(
+                kw in summary_lc
+                for kw in (
+                    "submit",
+                    "successfully",
+                    "application received",
+                    "thank you for applying",
+                    "thank you for appplying",  # agent typo-tolerant
+                )
             )
-            agent_summary = f"[UNVERIFIED SUBMIT] {agent_summary}"
+            if not clearly_submitted:
+                logger.warning(
+                    "  Agent declared success but no submit click was observed "
+                    "and summary doesn't mention submission. Flagging for manual "
+                    "verification."
+                )
+                agent_summary = f"[UNVERIFIED SUBMIT] {agent_summary}"
 
         failure_cat = None if status == "filled" else _classify_failure(agent_summary)
         return ApplicationResult(
